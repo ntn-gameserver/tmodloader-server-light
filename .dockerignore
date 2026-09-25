@@ -1,9 +1,0 @@
-.git
-.github
-*.md
-docker-compose.yml
-.env
-.env.example
-data
-secrets
-__pycache__

@@ -1,2 +1,0 @@
-# Intentional single-quoted jq/bash programs, trap-invoked functions, nameref map keys.
-disable=SC2016,SC2329,SC2004

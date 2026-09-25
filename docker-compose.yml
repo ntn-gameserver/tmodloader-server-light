@@ -1,18 +1,15 @@
-# Copy .env.example to .env, adjust it, then run: docker compose up -d
+# Copy .env.example to .env, adjust it, then: docker compose up -d --build
 services:
   tmodloader:
-    image: ghcr.io/ntn-gameserver/tmodloader-server-light:latest
-    # build: .
+    build: .
     container_name: tmodloader
     restart: unless-stopped
-    # Must exceed TMOD_SHUTDOWN_DELAY + TMOD_SHUTDOWN_TIMEOUT.
-    stop_grace_period: 2m
+    init: true
+    stop_grace_period: 1m
     env_file: .env
     ports:
-      - "${TMOD_HOST_PORT:-7777}:${TMOD_PORT:-7777}/tcp"
+      - "${TMOD_PORT:-7777}:${TMOD_PORT:-7777}/tcp"
     volumes:
       - "./data:/data"
       # For TMOD_USECONFIGFILE=Yes:
       # - "./customconfig.txt:/terraria-server/customconfig.txt:ro"
-      # For TMOD_PASS_FILE=/run/secrets/tmod-password:
-      # - "./secrets/tmod-password:/run/secrets/tmod-password:ro"
