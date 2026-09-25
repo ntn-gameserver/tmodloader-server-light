@@ -17,11 +17,20 @@ RUN apt-get update \
         ca-certificates curl jq unzip libicu74 libssl3 libgssapi-krb5-2 libsdl2-2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /root/installer /opt/steamcmd
+# The server runs as the unprivileged user "tml" (uid/gid 1000, Ubuntu's "ubuntu" user renamed).
+RUN groupmod --new-name tml ubuntu \
+    && usermod --login tml --home /home/tml --move-home ubuntu \
+    && install -d -o tml -g tml /data /terraria-server
+ENV HOME=/home/tml
+
+COPY --from=builder --chown=tml:tml /root/installer /opt/steamcmd
 COPY --from=builder /lib/i386-linux-gnu /opt/steam-runtime/lib
 COPY --from=builder /root/installer/linux32/libstdc++.so.6 /opt/steam-runtime/lib/
-RUN ln -s /opt/steam-runtime/lib/ld-linux.so.2 /lib/ld-linux.so.2 \
-    && LD_LIBRARY_PATH=/opt/steam-runtime/lib /opt/steamcmd/steamcmd.sh +login anonymous +quit
+RUN ln -s /opt/steam-runtime/lib/ld-linux.so.2 /lib/ld-linux.so.2
+USER tml
+RUN LD_LIBRARY_PATH=/opt/steam-runtime/lib /opt/steamcmd/steamcmd.sh +login anonymous +quit
+# Starts as root only to fix /data ownership, then entrypoint.sh switches to "tml".
+USER root
 
 # --- Game server install ---
 # "latest" or a release tag such as v2025.01.3.1
@@ -30,7 +39,7 @@ ENV TMOD_VERSION="latest"
 ENV TMOD_AUTO_UPDATE="1"
 
 # --- Mods ---
-# Steam Workshop IDs, comma separated. Downloaded/updated and enabled on start.
+# Workshop IDs and/or collection:<ID>, comma separated. Downloaded/updated and enabled on start.
 ENV TMOD_MODS=""
 
 # --- Runtime ---
@@ -48,6 +57,8 @@ ENV TMOD_MAXPLAYERS="8"
 ENV TMOD_WORLDNAME="Docker"
 ENV TMOD_WORLDSIZE="3"
 ENV TMOD_WORLDSEED="Docker"
+# random, corruption or crimson (only for new worlds)
+ENV TMOD_WORLDEVIL="random"
 ENV TMOD_DIFFICULTY="1"
 ENV TMOD_SECURE="0"
 ENV TMOD_LANGUAGE="en-US"
@@ -79,4 +90,6 @@ COPY --chmod=755 inject.sh /usr/local/bin/inject
 
 EXPOSE 7777
 VOLUME ["/data"]
+# The first start downloads tModLoader, .NET and mods; give it time.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30m --retries=3 CMD ["./entrypoint.sh", "healthcheck"]
 ENTRYPOINT ["./entrypoint.sh"]
