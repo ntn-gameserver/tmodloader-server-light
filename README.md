@@ -5,13 +5,14 @@ Schlanker Docker-Container für einen tModLoader-Server. Er basiert auf
 übernimmt einige Fixes aus [Crosis47/tmodloader](https://github.com/Crosis47/tmodloader).
 Es gibt keine Weboberfläche und keine Backups: Alles wird über Umgebungsvariablen gesteuert.
 
-Das Repo besteht aus zwei Skripten und dem `Dockerfile`:
+Das Repo besteht aus drei Skripten und dem `Dockerfile`:
 
 | Datei           | Zweck                                                        |
 |-----------------|--------------------------------------------------------------|
-| `Dockerfile`    | Ubuntu 24.04 + SteamCMD, alle Standardwerte der Variablen     |
-| `entrypoint.sh` | Rechte abgeben, tModLoader installieren/aktualisieren, Config schreiben, Mods laden, ggf. Welt erstellen, Server starten, Healthcheck |
+| `Dockerfile`    | Basis `steamcmd/steamcmd:ubuntu-24`, alle Standardwerte der Variablen |
+| `entrypoint.sh` | Rechte abgeben, tModLoader installieren/aktualisieren, Config schreiben, Mods laden, ggf. Welt erstellen, Server starten |
 | `inject.sh`     | Konsolenbefehle an den laufenden Server senden                |
+| `healthcheck.sh`| Docker-Healthcheck: Prozess läuft und Port ist offen          |
 
 ## Start
 
@@ -69,7 +70,7 @@ Alles liegt im Volume `/data`:
 - Statt `TMOD_AUTODOWNLOAD` und `TMOD_ENABLEDMODS` gibt es nur noch `TMOD_MODS`.
 - Die `enabled.json` wird jetzt korrekt als JSON geschrieben. Vorher entstand am Ende ein Komma zu viel.
 - Die `serverconfig.txt` wird bei jedem Start neu geschrieben, statt dass neue Zeilen angehängt werden. `TMOD_USECONFIGFILE=Yes` liest jetzt wirklich die `customconfig.txt`.
-- Das Basis-Image ist fest auf `ubuntu:24.04` gesetzt statt `latest`.
+- Basis ist `steamcmd/steamcmd:ubuntu-24` (Ubuntu 24.04 mit fertigem SteamCMD) statt `ubuntu:latest` plus separat heruntergeladenem SteamCMD.
 - Das Passwort taucht nicht mehr in den tModLoader-Logs auf.
 - Konsolenbefehle laufen über eine Pipe statt über tmux. Beim Stoppen wartet der Container, bis die Welt gespeichert ist.
 - Mod-Downloads werden bis zu dreimal versucht.

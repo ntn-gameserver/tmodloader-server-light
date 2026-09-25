@@ -2,15 +2,8 @@
 # Based on JACOBSMILE/tmodloader1.4; tModLoader itself is installed at runtime
 # into /data so the version can be controlled with TMOD_VERSION.
 
-# SteamCMD is 32-bit; take it and its i386 libraries from this image.
-FROM steamcmd/steamcmd:ubuntu-22 AS builder
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl tar
-WORKDIR /root/installer
-RUN curl -fsSL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz | tar zxf -
-
-# Pinned: ubuntu:latest moved to a release without tModLoader's .NET dependencies.
-FROM ubuntu:24.04
+# Ubuntu 24.04 with SteamCMD and its i386 libraries already installed.
+FROM steamcmd/steamcmd:ubuntu-24
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -18,57 +11,36 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # The server runs as the unprivileged user "tml" (uid/gid 1000, Ubuntu's "ubuntu" user renamed).
+# It gets its own copy of the SteamCMD install from the base image, so SteamCMD can update itself.
 RUN groupmod --new-name tml ubuntu \
-    && usermod --login tml --home /home/tml --move-home ubuntu \
-    && install -d -o tml -g tml /data /terraria-server
+    && usermod --login tml --home /home/tml --move-home --groups "" ubuntu \
+    && install -d -o tml -g tml /data /terraria-server /home/tml/.local/share \
+    && cp -a /root/.local/share/Steam /home/tml/.local/share/ \
+    && chown -R tml:tml /home/tml
 ENV HOME=/home/tml
 
-COPY --from=builder --chown=tml:tml /root/installer /opt/steamcmd
-COPY --from=builder /lib/i386-linux-gnu /opt/steam-runtime/lib
-COPY --from=builder /root/installer/linux32/libstdc++.so.6 /opt/steam-runtime/lib/
-RUN ln -s /opt/steam-runtime/lib/ld-linux.so.2 /lib/ld-linux.so.2
-USER tml
-RUN LD_LIBRARY_PATH=/opt/steam-runtime/lib /opt/steamcmd/steamcmd.sh +login anonymous +quit
-# Starts as root only to fix /data ownership, then entrypoint.sh switches to "tml".
-USER root
-
-# --- Game server install ---
-# "latest" or a release tag such as v2025.01.3.1
-ENV TMOD_VERSION="latest"
-# 1 = look for a newer release on every start (only with TMOD_VERSION=latest)
-ENV TMOD_AUTO_UPDATE="1"
-
-# --- Mods ---
-# Workshop IDs and/or collection:<ID>, comma separated. Downloaded/updated and enabled on start.
-ENV TMOD_MODS=""
-
-# --- Runtime ---
-ENV TMOD_SHUTDOWN_MESSAGE="Server is shutting down NOW!"
-# Minutes between world saves, 0 disables
-ENV TMOD_AUTOSAVE_INTERVAL="10"
-
-# --- Server config ---
-# "Yes" = use /terraria-server/customconfig.txt instead of the settings below
-ENV TMOD_USECONFIGFILE="No"
-ENV TMOD_MOTD="A tModLoader server powered by Docker!"
-# "N/A" disables the password
-ENV TMOD_PASS="docker"
-ENV TMOD_MAXPLAYERS="8"
-ENV TMOD_WORLDNAME="Docker"
-ENV TMOD_WORLDSIZE="3"
-ENV TMOD_WORLDSEED="Docker"
-# random, corruption or crimson (only for new worlds)
-ENV TMOD_WORLDEVIL="random"
-ENV TMOD_DIFFICULTY="1"
-ENV TMOD_SECURE="0"
-ENV TMOD_LANGUAGE="en-US"
-ENV TMOD_NPCSTREAM="60"
-ENV TMOD_UPNP="0"
-ENV TMOD_PRIORITY="1"
-ENV TMOD_PORT="7777"
-
-# --- Journey mode permissions (0 = locked, 1 = host, 2 = everyone) ---
-ENV TMOD_JOURNEY_SETFROZEN="0" \
+# Defaults for all settings; see .env.example for a description of each one.
+ENV TMOD_VERSION="latest" \
+    TMOD_AUTO_UPDATE="1" \
+    TMOD_MODS="" \
+    TMOD_SHUTDOWN_MESSAGE="Server is shutting down NOW!" \
+    TMOD_AUTOSAVE_INTERVAL="10" \
+    TMOD_USECONFIGFILE="No" \
+    TMOD_MOTD="A tModLoader server powered by Docker!" \
+    TMOD_PASS="docker" \
+    TMOD_MAXPLAYERS="8" \
+    TMOD_PORT="7777" \
+    TMOD_LANGUAGE="en-US" \
+    TMOD_SECURE="0" \
+    TMOD_NPCSTREAM="60" \
+    TMOD_UPNP="0" \
+    TMOD_PRIORITY="1" \
+    TMOD_WORLDNAME="Docker" \
+    TMOD_WORLDSIZE="3" \
+    TMOD_DIFFICULTY="1" \
+    TMOD_WORLDSEED="Docker" \
+    TMOD_WORLDEVIL="random" \
+    TMOD_JOURNEY_SETFROZEN="0" \
     TMOD_JOURNEY_SETDAWN="0" \
     TMOD_JOURNEY_SETNOON="0" \
     TMOD_JOURNEY_SETDUSK="0" \
@@ -87,9 +59,11 @@ ENV TMOD_JOURNEY_SETFROZEN="0" \
 WORKDIR /terraria-server
 COPY --chmod=755 entrypoint.sh .
 COPY --chmod=755 inject.sh /usr/local/bin/inject
+COPY --chmod=755 healthcheck.sh /usr/local/bin/healthcheck
 
 EXPOSE 7777
 VOLUME ["/data"]
 # The first start downloads tModLoader, .NET and mods; give it time.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30m --retries=3 CMD ["./entrypoint.sh", "healthcheck"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30m --retries=3 CMD ["healthcheck"]
+# Starts as root only to fix /data ownership, then entrypoint.sh switches to "tml".
 ENTRYPOINT ["./entrypoint.sh"]

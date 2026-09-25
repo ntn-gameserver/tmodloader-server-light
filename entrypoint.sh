@@ -13,20 +13,6 @@ steam_api=https://api.steampowered.com/ISteamRemoteStorage
 
 log() { echo "[SYSTEM] $*"; }
 fail() { echo "[!!] FATAL: $*" >&2; exit 1; }
-steamcmd() { LD_LIBRARY_PATH=/opt/steam-runtime/lib /opt/steamcmd/steamcmd.sh "$@"; }
-
-# ---------------------------------------------------------------------------
-# Healthcheck (Dockerfile HEALTHCHECK): server process alive and port listening.
-# Reads /proc instead of connecting, because every connection takes a player slot.
-# ---------------------------------------------------------------------------
-if [[ ${1:-} == healthcheck ]]; then
-    [[ -r $pid_file ]] && kill -0 "$(<"$pid_file")" 2>/dev/null || exit 1
-    printf -v port_hex ':%04X' "$TMOD_PORT"
-    # tcp6 is missing when IPv6 is disabled.
-    { cat /proc/net/tcp /proc/net/tcp6 2>/dev/null || true; } \
-        | awk -v p="$port_hex" '$2 ~ p"$" && $4 == "0A" { found = 1 } END { exit !found }'
-    exit
-fi
 
 # ---------------------------------------------------------------------------
 # Drop root: fix ownership of /data, then re-run this script as user "tml".
@@ -34,7 +20,6 @@ fi
 if [[ $(id -u) == 0 ]]; then
     mkdir -p /data
     find /data -xdev \( ! -user tml -o ! -group tml \) -exec chown -h tml:tml {} +
-    rm -f "$pipe" "$pid_file"  # leftovers from a previous run of this container
     exec setpriv --reuid=tml --regid=tml --init-groups -- "$0" "$@"
 fi
 
@@ -215,7 +200,7 @@ server_cmd=(./LaunchUtils/ScriptCaller.sh -server -tmlsavedirectory /data/tModLo
 cd "$server_dir"
 
 create_world() {
-    local tmp gen_log gen_pid pos=0 deadline=$((SECONDS + 3600))
+    local tmp gen_log gen_pid pos=0
     tmp=$(mktemp -d "$world_dir/.create-XXXXXX")
     gen_log=$tmp/console.log
     # Same settings, but no world to load and generated worlds go to $tmp.
@@ -228,7 +213,6 @@ create_world() {
     answer() {  # wait for a prompt, then type the answer
         until tail -c +$((pos + 1)) "$gen_log" 2>/dev/null | grep -qiE "$1"; do
             kill -0 "$gen_pid" 2>/dev/null || fail "World creation stopped unexpectedly."
-            ((SECONDS < deadline)) || fail "World creation timed out."
             sleep 1
         done
         pos=$(stat -c %s "$gen_log")
@@ -259,7 +243,6 @@ create_world() {
 }
 
 if [[ ${TMOD_USECONFIGFILE,,} != yes && ! -e $world && $TMOD_WORLDEVIL != random ]]; then
-    rm -rf "$world_dir"/.create-*
     create_world
 fi
 
